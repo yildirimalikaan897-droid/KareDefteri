@@ -179,6 +179,7 @@ async function handleRegister(e) {
 
     try {
         const res = await api.register(data);
+        window._verificationCode = res.verification_code || null;
         alertDiv.innerHTML = `<div class="alert alert-success">${res.message}</div>`;
         setTimeout(() => navigate('verify', { email: data.email }), 1500);
     } catch (err) {
@@ -195,7 +196,8 @@ function showVerify(email) {
         <div class="auth-page">
             <div class="auth-card">
                 <h1>📧 Doğrulama</h1>
-                <p class="subtitle">E-posta adresinize gönderilen 6 haneli kodu girin</p>
+                <p class="subtitle">Hesabınızı doğrulamak için aşağıdaki kodu girin</p>
+                ${window._verificationCode ? `<div class="alert alert-success" style="text-align:center;font-size:1.2rem;margin-bottom:1rem">Doğrulama Kodunuz: <strong style="font-size:1.5rem;letter-spacing:0.3rem">${window._verificationCode}</strong></div>` : ''}
                 <div id="verify-alert"></div>
                 <form onsubmit="handleVerify(event, '${email}')">
                     <div class="form-group">
@@ -235,7 +237,12 @@ async function handleVerify(e, email) {
 async function handleResendCode(email) {
     try {
         const res = await api.resendCode(email);
-        document.getElementById('verify-alert').innerHTML = `<div class="alert alert-success">${res.message}</div>`;
+        window._verificationCode = res.verification_code || null;
+        let msg = res.message;
+        if (res.verification_code) {
+            msg += ` <strong style="font-size:1.3rem;letter-spacing:0.3rem">${res.verification_code}</strong>`;
+        }
+        document.getElementById('verify-alert').innerHTML = `<div class="alert alert-success">${msg}</div>`;
     } catch (err) {
         document.getElementById('verify-alert').innerHTML = `<div class="alert alert-error">${err.error}</div>`;
     }
@@ -1082,3 +1089,4 @@ document.addEventListener('click', (e) => {
 
 // Init on load
 document.addEventListener('DOMContentLoaded', init);
+
