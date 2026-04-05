@@ -18,6 +18,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 from io import BytesIO
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 import bcrypt
 import jwt
@@ -32,6 +35,13 @@ STORIES_DIR = os.path.join(UPLOAD_DIR, 'stories')
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), '..', 'frontend')
 HOST = '0.0.0.0'
 PORT = int(os.environ.get('PORT', 8000))
+
+# SMTP Email Config
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
+SMTP_FROM = os.environ.get('SMTP_FROM', SMTP_USER)
 
 os.makedirs(POSTS_DIR, exist_ok=True)
 os.makedirs(STORIES_DIR, exist_ok=True)
@@ -57,6 +67,44 @@ def verify_token(token):
 
 def generate_verification_code():
     return ''.join(random.choices(string.digits, k=6))
+
+
+def send_verification_email(email, code, username):
+    """Send verification code via SMTP email"""
+    if not SMTP_USER or not SMTP_PASS:
+        print(f"[VERIFICATION] SMTP not configured. User: {username}, Email: {email}, Code: {code}")
+        return False
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = 'KareDefteri - E-posta Dogrulama Kodu'
+        msg['From'] = SMTP_FROM
+        msg['To'] = email
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+            <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <h2 style="color: #e91e63; text-align: center;">KareDefteri</h2>
+                <p>Merhaba <strong>{username}</strong>,</p>
+                <p>Hesabinizi dogrulamak icin asagidaki kodu kullanin:</p>
+                <div style="text-align: center; margin: 25px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333; background: #f0f0f0; padding: 15px 30px; border-radius: 8px; display: inline-block;">{code}</span>
+                </div>
+                <p style="color: #666; font-size: 14px;">Bu kod 15 dakika icinde gecerliligini yitirecektir.</p>
+                <p style="color: #999; font-size: 12px;">Bu e-postayi siz talep etmediyseniz, lutfen dikkate almayin.</p>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html_body, 'html'))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_FROM, email, msg.as_string())
+        print(f"[VERIFICATION] Email sent to {email} for user {username}")
+        return True
+    except Exception as e:
+        print(f"[VERIFICATION ERROR] Failed to send email to {email}: {e}")
+        return False
 
 def json_response(handler, data, status=200):
     handler.send_response(status)
@@ -322,8 +370,8 @@ class KareDefteriHandler(BaseHTTPRequestHandler):
         db.commit()
         db.close()
 
-        # In production, send email via SMTP. Here we log it.
-        print(f"[VERIFICATION] User: {username}, Email: {email}, Code: {code}")
+        # Send verification email
+        send_verification_email(email, code, username)
 
         return json_response(self, {
             'message': 'Kayıt başarılı! Doğrulama kodu e-posta adresinize gönderildi.',
@@ -438,7 +486,7 @@ class KareDefteriHandler(BaseHTTPRequestHandler):
         db.commit()
         db.close()
 
-        print(f"[VERIFICATION RESEND] User: {user['username']}, Code: {code}")
+        send_verification_email(email, code, user['username'])
 
         return json_response(self, {
             'message': 'Yeni doğrulama kodu gönderildi.',
